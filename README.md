@@ -37,7 +37,7 @@ Penalty: without training, calibration, testing answer (-5 points of each answer
 ## Bonus
 * Round number to two decimal places: 2 points
 * Performance Bonus: average testing performance
-  * < 0.90 : 4 points
+  * < 0.90: 4 points
   * 0.85 ~ 0.90: 3 points
   * 0.80 ~ 0.85: 2 points
   * 0.75 ~ 0.80: 1 points
