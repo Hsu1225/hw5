@@ -1,0 +1,115 @@
+#105304022統三許凱淳
+args = commandArgs(trailingOnly=TRUE)
+
+n <- as.integer(args[2])
+df <- read.csv(args[4])
+titanictest <- read.csv(args[6])
+#df <- read.csv("Titanic_Data/train.csv")
+#titanictest <- read.csv("Titanic_Data/test.csv")
+library(adabag)
+library(rpart)
+library(randomForest)
+df$PassengerId <- cut(1:dim(df)[[1]], n,labels = 1:n)
+#df$PassengerId <- cut(1:dim(df)[[1]], 10,labels = 1:10)
+sumtr = 0
+sumte = 0
+sumv = 0
+
+titanictest$Survived = 0
+combi <- rbind(df, titanictest)
+
+#對名字進行整理
+combi$Name <- as.character(combi$Name)
+strsplit(combi$Name[1], split='[,.]')
+strsplit(combi$Name[1], split='[,.]')[[1]]
+strsplit(combi$Name[1], split='[,.]')[[1]][2]
+combi$Title <- sapply(combi$Name, FUN=function(x) {strsplit(x, split='[,.]')[[1]][2]})
+combi$Title <- sub(' ', '', combi$Title)
+combi$Title[combi$PassengerId == 797] <- 'Mrs' # female doctor
+combi$Title[combi$Title %in% c('Lady', 'the Countess', 'Mlle', 'Mee', 'Ms')] <- 'Miss'
+combi$Title[combi$Title %in% c('Capt', 'Don', 'Major', 'Sir', 'Col', 'Jonkheer', 'Rev', 'Dr', 'Master')] <- 'Mr'
+combi$Title[combi$Title %in% c('Dona')] <- 'Mrs'
+combi$Title <- factor(combi$Title)
+
+#對上船點進行整理，用mode代替缺失值
+combi$Embarked[c(62,830)] = "S"
+combi$Embarked <- factor(combi$Embarked)
+
+#對票價進行整理，用median代替缺失值
+combi$Fare[1044] <- median(combi$Fare, na.rm=TRUE)
+
+#對SibSp Parch進行整理合併，為 family_size
+combi$family_size <- combi$SibSp + combi$Parch + 1
+
+#使用anova分析和decesion tree對年齡做預測整理
+predicted_age <- rpart(Age ~ Pclass + Sex + SibSp + Parch + Fare + Embarked + Title + family_size,data=combi[!is.na(combi$Age),], method="anova")
+combi$Age[is.na(combi$Age)] <- predict(predicted_age, combi[is.na(combi$Age),])
+
+#製造模型分割為train,test
+df <- combi[1:891,]
+titanictest <- combi[892:1309,]
+titanictest$Survived <- NULL
+
+#對Cabin整理，並以"H"取代缺失值
+df$Cabin <- substr(df$Cabin,1,1)
+df$Cabin[df$Cabin == ""] <- "H"
+df$Cabin[df$Cabin == "T"] <- "H"
+titanictest$Cabin <- substr(titanictest$Cabin,1,1)
+titanictest$Cabin[titanictest$Cabin == ""] <- "H"
+titanictest$Cabin <- factor(titanictest$Cabin)
+titanictest$Cabin <- factor(titanictest$Cabin)
+
+#for(i in 1:as.integer(args[2])){
+for(i in 1:n){
+  test <- df[df$PassengerId == i,]
+  val <- df[df$PassengerId == i%%n+1,]
+  train <- df[df$PassengerId != i&df$PassengerId != i%%n+1,]
+  rf_model <- randomForest(factor(Survived) ~ Age + Sex + Pclass + family_size+Title+Fare+Embarked, data=train ,mtry=2, ntree =900, importance = T)
+  rf_train <- predict(rf_model, train, type = "class")
+  fretrain <- table(rf_train, train$Survived)
+  traina <- sum(diag(fretrain))/sum(fretrain)
+  sumtr = sumtr + traina
+  rf_val <- predict(rf_model, val, type ="class")
+  freval <- table(rf_val, val$Survived)
+  vala <- sum(diag(freval))/sum(freval)
+  sumv = sumv + vala
+  rf_test <- predict(rf_model, test, type ="class")
+  fretest <- table(rf_test, test$Survived)
+  testa <- sum(diag(fretest))/sum(fretest)
+  sumte <- sumte + testa
+}
+
+trainavg <- round(sumtr/n, 2) 
+valavg <- round(sumv/n, 2)
+testavg <- round(sumte/n, 2)
+#trainavg <- sumtr/ 5
+#valavg <- sumv/ 5
+#testavg <- sumte/ 5
+
+#p <- vector[1,1]
+#test2 <- df[df$PassengerId == p,]
+#val2 <- df[df$PassengerId == p%%n+1,]
+#train2 <- df[df$PassengerId != i&df$PassengerId != p%%n+1,]
+#rf_model2 <- randomForest(factor(Survived) ~ Age + Sex + Pclass + family_size+Title+Fare+Embarked, data=train ,mtry=2, ntree =900, importance = T)
+#rf_train2 <- predict(rf_model, train, type = "class")
+#fretrain2 <- table(rf_train, train$Survived)
+#traina2 <- sum(diag(fretrain))/sum(fretrain)
+#sumtr2 = sumtr2 + traina2
+#rf_val2 <- predict(rf_model, val, type ="class")
+#freval2 <- table(rf_val, val$Survived)
+#vala2 <- sum(diag(freval))/sum(freval)
+#sumv2 = sumv + vala
+#rf_test2 <- predict(rf_model, test, type ="class")
+#fretest2 <- table(rf_test, test$Survived)
+#testa2 <- sum(diag(fretest))/sum(fretest)
+#sumte2 <- sumte + testa
+
+rf_predict <- predict(rf_model, titanictest, type = "class")
+dftest <- data.frame(PassengerId = c(892:1309), Survived = rf_predict)
+
+set <- c("training", "validation","test")
+accuracy <- c(trainavg, valavg, testavg)
+data <- data.frame(set, accuracy)
+data
+#write.csv(data, args[8], row.names = F, quote=F)
+write.csv(dftest,args[8], row.names = F, quote=F)
